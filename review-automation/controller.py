@@ -441,8 +441,6 @@ def policy_hash(policy):
 def publish(gh, snapshot, result, policy, key, report):
     if policy["mode"] == "dry-run":
         return "dry-run"
-    if policy["mode"] == "merge":
-        raise Stop("Automatic merge unavailable in v1; no publication in merge mode")
     if policy["mode"] not in ("publish", "merge") or policy["approved_policy_sha256"] != policy_hash(policy):
         raise Stop("Publication not approved for this exact policy")
     identity = getattr(gh, "actor", None) or gh.request("/user")["login"]
@@ -457,6 +455,9 @@ def publish(gh, snapshot, result, policy, key, report):
     if published is None:
         event = decision if decision in ("APPROVE", "REQUEST_CHANGES") else "COMMENT"
         gh.api(f"pulls/{snapshot['number']}/reviews", "POST", {"commit_id": snapshot["head"], "body": report, "event": event})
+    if policy["mode"] == "merge" and decision == "APPROVE":
+        from merge_gate import merge
+        return merge(gh, snapshot, result, policy)
     return "published"
 
 
@@ -530,7 +531,10 @@ def main():
         while not (state.directory / "STOP").exists():
             if policy.get("github_app_config"):
                 from github_app import app_client
-                gh = app_client(ROOT / policy["github_app_config"], policy["repository"])
+                merge_enabled = policy["mode"] == "merge"
+                if merge_enabled and policy.get("approved_policy_sha256") != policy_hash(policy):
+                    raise Stop("Merge policy has not been approved")
+                gh = app_client(ROOT / policy["github_app_config"], policy["repository"], allow_merge=merge_enabled)
             else:
                 gh = GitHub(policy["repository"], credential_user=policy.get("github_credential_user"))
             completed = run_once(gh, state, policy)

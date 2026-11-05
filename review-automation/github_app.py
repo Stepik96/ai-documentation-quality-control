@@ -48,7 +48,7 @@ def load_secret(path):
     return json.loads(protect(Path(path).read_bytes(), decrypt=True))
 
 
-def app_client(config_path, repo):
+def app_client(config_path, repo, allow_merge=False):
     value = load_secret(config_path)
     node = shutil.which("node.exe") or shutil.which("node")
     if not node:
@@ -70,6 +70,8 @@ process.stdout.write(text+'.'+signature);});"""
     if installation["id"] != value["installation_id"]:
         raise c.Stop("GitHub App installation mismatch")
     permission = {"contents": "read", "issues": "read", "checks": "read", "statuses": "read", "pull_requests": "write"}
+    if allow_merge:
+        permission.update(contents="write", administration="read")
     token = auth.request(f"/app/installations/{value['installation_id']}/access_tokens", "POST",
         {"repositories": [repo.split('/')[1]], "permissions": permission})
     client = c.GitHub(repo, token=token["token"])

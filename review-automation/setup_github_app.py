@@ -22,12 +22,13 @@ def main():
     server.done = False
     server.target = target
     server.base = f"http://127.0.0.1:{server.server_port}"
+    c.write_json(c.ROOT / ".state" / "setup-link.json", {"url": server.base + "/?state=" + state})
     server.manifest = {
         "name": "AI Documentation Reviewer " + secrets.token_hex(3),
         "url": "https://github.com/Stepik96/ai-documentation-quality-control",
         "description": "Local Codex PR review. No merge or repository write permission.",
         "public": False,
-        "hook_attributes": {"url": server.base + "/unused-webhook", "active": False},
+        "hook_attributes": {"url": "https://github.com/Stepik96/ai-documentation-quality-control", "active": False},
         "redirect_url": server.base + "/manifest",
         "setup_url": server.base + "/installed?state=" + state,
         "default_permissions": {"contents": "read", "issues": "read", "checks": "read", "statuses": "read", "pull_requests": "write"},
