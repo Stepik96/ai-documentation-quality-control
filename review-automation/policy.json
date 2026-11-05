@@ -1,0 +1,19 @@
+{
+  "repository": "Stepik96/ai-documentation-quality-control",
+  "base": "main",
+  "mode": "dry-run",
+  "poll_seconds": 180,
+  "timeout_seconds": 600,
+  "max_attempts": 2,
+  "max_context_bytes": 240000,
+  "allowed_authors": [],
+  "bot_login": "",
+  "required_checks": ["review-controller-tests"],
+  "merge_categories": ["documentation"],
+  "approved_policy_sha256": "",
+  "trusted_docs": [
+    "README.md",
+    "docs/developers/Сценарии сервиса проверки документации — scope и версии.md"
+  ],
+  "human_paths": [".github/", "automation/", "review-automation/", "AGENTS.md", ".pr_agent.toml", "README.md", "docs/developers/", "docs/ai-context/", "requirements", "migrations/", "deploy/", "infra/", "Dockerfile", "package", "pyproject.toml", "requirements.txt"]
+}

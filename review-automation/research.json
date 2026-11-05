@@ -1,0 +1,66 @@
+{
+  "date": "2026-11-05",
+  "repository": "Stepik96/ai-documentation-quality-control",
+  "main": "98d3a54457299c721b82fc48980db0a031c54ea0",
+  "branches": [
+    {
+      "name": "develop",
+      "commit": {
+        "sha": "49269c6270e3612405eb9c3cf9e663c2de2bf602",
+        "url": "https://api.github.com/repos/Stepik96/ai-documentation-quality-control/commits/49269c6270e3612405eb9c3cf9e663c2de2bf602"
+      },
+      "protected": false
+    },
+    {
+      "name": "main",
+      "commit": {
+        "sha": "98d3a54457299c721b82fc48980db0a031c54ea0",
+        "url": "https://api.github.com/repos/Stepik96/ai-documentation-quality-control/commits/98d3a54457299c721b82fc48980db0a031c54ea0"
+      },
+      "protected": false
+    }
+  ],
+  "open_prs": [],
+  "upstream": "a8c604794ddb5766dc3fa674cbb64aac6f9f509f",
+  "paths": [
+    "README.md",
+    "docs",
+    "docs/ai-context",
+    "docs/ai-context/README.md",
+    "docs/ai-context/project-analysis",
+    "docs/ai-context/project-analysis/01-product-discovery.md",
+    "docs/ai-context/project-analysis/02-evidence-and-style-rules.md",
+    "docs/ai-context/project-analysis/03-mvp-scope-and-roadmap.md",
+    "docs/ai-context/project-analysis/04-user-flows-and-use-cases.md",
+    "docs/ai-context/project-analysis/05-requirements.md",
+    "docs/ai-context/project-analysis/06-domain-model.md",
+    "docs/ai-context/project-analysis/07-system-boundaries-and-options.md",
+    "docs/ai-context/project-analysis/08-quality-security-and-validation.md",
+    "docs/ai-context/project-analysis/09-risks-decisions-and-open-questions.md",
+    "docs/ai-context/project-analysis/10-ai-skills-usage.md",
+    "docs/ai-context/project-analysis/README.md",
+    "docs/ai-context/source-materials",
+    "docs/ai-context/source-materials/Основные замечания к документам.doc",
+    "docs/ai-context/source-materials/Расшифровка_1-созвон(1).txt",
+    "docs/ai-context/source-materials/Расшифровка_1-созвон.txt",
+    "docs/ai-context/source-materials/Руководство пользователя по документу Заказ клиента.docx",
+    "docs/ai-context/source-materials/Руководство пользователя. Документ Установка цен номенклатуры_пример.docx",
+    "docs/ai-context/source-materials/Руководство_пользователя_Расчет_стоимости_приготовления_БР_растворный сервис.docx",
+    "docs/ai-context/source-materials/Руководство_пользователя_Фактический_производственный_акт_бурение_v3.docx",
+    "docs/ai-context/source-materials/Частное техническое задание. Загрузка начальных данных_пример.doc",
+    "docs/ai-context/source-materials/Частное техническое задание. Замещение ВСГ.doc",
+    "docs/ai-context/source-materials/Частное техническое задание. Обработка по вводу бюджетов_пример.doc",
+    "docs/ai-context/source-materials/Частное техническое задание. Планирование техники с учетом расстояния v2.docx",
+    "docs/assets",
+    "docs/assets/mvp-user-flow.png",
+    "docs/developers",
+    "docs/developers/Сценарии сервиса проверки документации — scope и версии.md"
+  ],
+  "official": [
+    "https://learn.chatgpt.com/docs/non-interactive-mode",
+    "https://learn.chatgpt.com/docs/auth"
+  ],
+  "cli": "0.144.6",
+  "cli_auth": "Not logged in",
+  "shell_github_network": false
+}
