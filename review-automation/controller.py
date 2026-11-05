@@ -64,11 +64,23 @@ def run_process(command, *, input=None, timeout, env=None, cwd=None, **unused):
 
 
 class GitHub:
-    def __init__(self, repo, token=None):
+    def __init__(self, repo, token=None, credential_user=None):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
             raise Stop("Invalid repository")
         self.repo = repo
         self.token = token or os.environ.get("REVIEW_GITHUB_TOKEN")
+        if not self.token and credential_user:
+            # Official GCM interface; credential stays in process memory, never logs/files.
+            environment = dict(os.environ, GCM_INTERACTIVE="Never", GIT_TERMINAL_PROMPT="0")
+            query = f"protocol=https\nhost=github.com\nusername={credential_user}\n\n"
+            try:
+                response = run_process(["git", "credential-manager", "get"], input=query,
+                    env=environment, timeout=20)
+            except (OSError, subprocess.TimeoutExpired):
+                raise Stop("GitHub credential manager unavailable") from None
+            if response.returncode == 0:
+                fields = dict(line.split("=", 1) for line in response.stdout.splitlines() if "=" in line)
+                self.token = fields.get("password")
         if not self.token:
             raise Stop("GitHub authorization unavailable: set REVIEW_GITHUB_TOKEN locally")
 
@@ -433,7 +445,7 @@ def publish(gh, snapshot, result, policy, key, report):
         raise Stop("Automatic merge unavailable in v1; no publication in merge mode")
     if policy["mode"] not in ("publish", "merge") or policy["approved_policy_sha256"] != policy_hash(policy):
         raise Stop("Publication not approved for this exact policy")
-    identity = gh.request("/user")["login"]
+    identity = getattr(gh, "actor", None) or gh.request("/user")["login"]
     if not policy["bot_login"] or identity != policy["bot_login"] or identity == snapshot["pr"]["user"]["login"]:
         raise Stop("Independent configured reviewer identity required")
     current = collect(gh, snapshot["number"], policy)
@@ -503,17 +515,27 @@ def main():
         print("Stop flag cleared; run watch to start")
         return
     if args.command == "status":
-        print(json.dumps(state.db.execute("SELECT number,status,attempts,key FROM runs ORDER BY rowid DESC LIMIT 20").fetchall()))
+        health_path = state.directory / "health.json"
+        print(json.dumps({"runs": state.db.execute("SELECT number,status,attempts,key FROM runs ORDER BY rowid DESC LIMIT 20").fetchall(),
+            "health": read_json(health_path) if health_path.exists() else None,
+            "stop_requested": (state.directory / "STOP").exists()}, ensure_ascii=False))
         return
     if args.command == "doctor":
         print(json.dumps({"python": True, "codex": bool(shutil.which("codex.cmd") or shutil.which("codex")),
             "github_token_set": bool(os.environ.get("REVIEW_GITHUB_TOKEN")), "mode": policy["mode"],
+            "github_credential_user": policy.get("github_credential_user"),
             "merge_available": False, "required_checks": policy["required_checks"]}, ensure_ascii=False))
         return
     try:
-        gh = GitHub(policy["repository"])
         while not (state.directory / "STOP").exists():
+            if policy.get("github_app_config"):
+                from github_app import app_client
+                gh = app_client(ROOT / policy["github_app_config"], policy["repository"])
+            else:
+                gh = GitHub(policy["repository"], credential_user=policy.get("github_credential_user"))
             completed = run_once(gh, state, policy)
+            write_json(state.directory / "health.json", {"last_success": int(time.time()), "pid": os.getpid(),
+                "mode": policy["mode"], "completed_reviews": len(completed), "poll_seconds": policy["poll_seconds"]})
             if completed:
                 print(json.dumps(completed, ensure_ascii=False), flush=True)
             if args.command == "once":

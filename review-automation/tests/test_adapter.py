@@ -47,3 +47,16 @@ class CodexAdapter(unittest.TestCase):
         import sys
         with self.assertRaises(subprocess.TimeoutExpired):
             c.run_process([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.1)
+
+    def test_github_uses_official_credential_manager_without_exposing_secret(self):
+        with patch.dict(os.environ, {}, clear=True), patch("controller.run_process", return_value=subprocess.CompletedProcess([], 0, "username=Stepik96\npassword=fake-test-secret\n", "")) as run:
+            gh = c.GitHub("Stepik96/ai-documentation-quality-control", credential_user="Stepik96")
+        self.assertEqual(gh.token, "fake-test-secret")
+        self.assertEqual(run.call_args.args[0], ["git", "credential-manager", "get"])
+        self.assertEqual(run.call_args.kwargs["env"]["GCM_INTERACTIVE"], "Never")
+
+    def test_credential_failure_does_not_expose_output(self):
+        with patch.dict(os.environ, {}, clear=True), patch("controller.run_process", return_value=subprocess.CompletedProcess([], 1, "", "private-auth-details")):
+            with self.assertRaises(c.Stop) as error:
+                c.GitHub("Stepik96/ai-documentation-quality-control", credential_user="Stepik96")
+        self.assertNotIn("private-auth-details", str(error.exception))

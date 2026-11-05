@@ -2,6 +2,7 @@
   "repository": "Stepik96/ai-documentation-quality-control",
   "base": "main",
   "mode": "dry-run",
+  "github_credential_user": "Stepik96",
   "poll_seconds": 180,
   "timeout_seconds": 600,
   "max_attempts": 2,
