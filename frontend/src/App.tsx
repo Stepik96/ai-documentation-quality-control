@@ -12,6 +12,7 @@ import {
   FileText,
   Info,
   ListTree,
+  LoaderCircle,
   Plus,
   RotateCcw,
   ScanLine,
@@ -26,9 +27,17 @@ import {
   SCENARIOS,
 } from "./demo";
 import type { DemoReport, Finding, Scenario } from "./demo";
+import { CheckSubmissionError, uploadDocument } from "./api/checks";
 import "./App.css";
 
 const EXAMPLE_FILE = "Пример проектной документации.docx";
+const UPLOAD_TIMEOUT_MS = 30_000;
+
+type Submission =
+  | { state: "idle" }
+  | { state: "submitting" }
+  | { state: "accepted"; checkId: string }
+  | { state: "error"; message: string };
 
 function DocumentArtwork({ selected = false }: { selected?: boolean }) {
   return (
@@ -85,15 +94,20 @@ function App() {
   const [activeId, setActiveId] = useState("");
   const [copied, setCopied] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const [submission, setSubmission] = useState<Submission>({ state: "idle" });
   const inputRef = useRef<HTMLInputElement>(null);
   const chooseRef = useRef<HTMLButtonElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
   const reportHeadingRef = useRef<HTMLHeadingElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uploadRef = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
       if (copyTimer.current) clearTimeout(copyTimer.current);
+      const pendingUpload = uploadRef.current;
+      uploadRef.current = null;
+      pendingUpload?.abort();
     },
     [],
   );
@@ -112,6 +126,7 @@ function App() {
   }, []);
 
   function selectFile(files: FileList | File[] | null) {
+    if (uploadRef.current) return;
     if (!files || !files.length) return;
     const error = getSelectionError(files);
     if (error) {
@@ -120,6 +135,7 @@ function App() {
     }
     setFile(files[0]);
     setSelectionError("");
+    setSubmission({ state: "idle" });
     requestAnimationFrame(() =>
       chooseRef.current?.focus({ preventScroll: true }),
     );
@@ -128,6 +144,37 @@ function App() {
     event.preventDefault();
     setDragging(false);
     selectFile(event.dataTransfer.files);
+  }
+  async function submitDocument() {
+    if (!file || uploadRef.current || submission.state === "accepted") return;
+    const controller = new AbortController();
+    uploadRef.current = controller;
+    setSubmission({ state: "submitting" });
+    setSelectionError("");
+    setDragging(false);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, UPLOAD_TIMEOUT_MS);
+    try {
+      const accepted = await uploadDocument(file, controller.signal);
+      if (uploadRef.current === controller)
+        setSubmission({ state: "accepted", checkId: accepted.checkId });
+    } catch (error) {
+      if (uploadRef.current !== controller) return;
+      setSubmission({
+        state: "error",
+        message: timedOut
+          ? "Сервер не ответил вовремя. Приём документа не подтверждён. Попробуйте отправить файл ещё раз."
+          : error instanceof CheckSubmissionError
+            ? error.message
+            : "Не удалось отправить документ. Проверьте соединение и повторите попытку.",
+      });
+    } finally {
+      clearTimeout(timer);
+      if (uploadRef.current === controller) uploadRef.current = null;
+    }
   }
   function showReport(
     nextScenario: Scenario,
@@ -151,6 +198,10 @@ function App() {
     });
   }
   function newCheck(goToTop = false) {
+    const pendingUpload = uploadRef.current;
+    uploadRef.current = null;
+    pendingUpload?.abort();
+    setSubmission({ state: "idle" });
     setScreen("upload");
     setReport(null);
     setFile(null);
@@ -192,6 +243,8 @@ function App() {
     (finding) => finding.id === activeId,
   );
   const isReport = screen === "report" && report !== null;
+  const isSubmitting = submission.state === "submitting";
+  const isAccepted = submission.state === "accepted";
 
   return (
     <div className={`app ${isReport ? "has-report" : ""}`}>
@@ -263,7 +316,7 @@ function App() {
               </span>
               <span className="demo-label">
                 <span />
-                Демо
+                {isReport ? "Демо" : "Загрузка"}
               </span>
             </div>
             {!isReport ? (
@@ -276,8 +329,8 @@ function App() {
                   </h2>
                   <p>
                     Выберите готовый файл.
-                    <br />
-                    Следующий шаг — понятный список того, что стоит поправить.
+                    <br /> Отправьте документ и получите подтверждение, что он
+                    принят в очередь на проверку.
                   </p>
                   <div className="scope-list" aria-label="Направления проверки">
                     <span>
@@ -304,6 +357,7 @@ function App() {
                   <input
                     ref={inputRef}
                     type="file"
+                    disabled={isSubmitting}
                     className="visually-hidden"
                     tabIndex={-1}
                     aria-label="Выбрать один документ"
@@ -316,7 +370,7 @@ function App() {
                     className={`dropzone ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
                     onDragOver={(event) => {
                       event.preventDefault();
-                      setDragging(true);
+                      if (!isSubmitting) setDragging(true);
                     }}
                     onDragLeave={(event) => {
                       if (
@@ -359,6 +413,7 @@ function App() {
                           <button
                             className="text-button"
                             ref={chooseRef}
+                            disabled={isSubmitting}
                             onClick={() => inputRef.current?.click()}
                           >
                             <RotateCcw size={13} />
@@ -366,9 +421,11 @@ function App() {
                           </button>
                           <button
                             className="text-button"
+                            disabled={isSubmitting}
                             onClick={() => {
                               setFile(null);
                               setSelectionError("");
+                              setSubmission({ state: "idle" });
                               requestAnimationFrame(() =>
                                 chooseRef.current?.focus(),
                               );
@@ -403,21 +460,79 @@ function App() {
                   <div className="upload-action-row">
                     <span className="file-count">
                       <span className={file ? "is-ready" : ""} />
-                      {file ? "Готов к демонстрации" : "Ожидаем документ"}
+                      {isSubmitting
+                        ? "Отправляем документ"
+                        : isAccepted
+                          ? "В очереди на проверку"
+                          : file
+                            ? "Готов к отправке"
+                            : "Ожидаем документ"}
                     </span>
                     <button
                       className="button button-primary check-button"
-                      disabled={!file}
-                      onClick={() => file && showReport("findings", file.name)}
+                      disabled={!file || isSubmitting || isAccepted}
+                      aria-busy={isSubmitting}
+                      onClick={submitDocument}
                     >
-                      Проверить <ArrowUpRight size={17} />
+                      {isSubmitting ? (
+                        <>
+                          Отправляем{" "}
+                          <LoaderCircle className="upload-spinner" size={17} />
+                        </>
+                      ) : isAccepted ? (
+                        <>
+                          Принято <Check size={17} />
+                        </>
+                      ) : (
+                        <>
+                          Проверить <ArrowUpRight size={17} />
+                        </>
+                      )}
                     </button>
                   </div>
+                  <div
+                    className="submission-feedback"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {isSubmitting && (
+                      <p className="upload-progress">
+                        Идёт отправка файла. Дождитесь ответа сервера.
+                      </p>
+                    )}
+                    {submission.state === "accepted" && (
+                      <div className="upload-accepted" role="status">
+                        <CheckCheck size={19} />
+                        <div>
+                          <strong>Документ принят, ожидает проверки</strong>
+                          <p>
+                            Номер заявки:{" "}
+                            <span className="accepted-id">
+                              {submission.checkId}
+                            </span>
+                          </p>
+                          <p>
+                            Статус и результат появятся на следующих этапах
+                            разработки.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {submission.state === "error" && (
+                    <div className="selection-error upload-error" role="alert">
+                      <CircleAlert size={17} />
+                      <div>
+                        <strong>Приём документа не подтверждён</strong>
+                        <p>{submission.message}</p>
+                      </div>
+                    </div>
+                  )}
                   <p className="demo-disclosure">
                     <Info size={14} />
                     <span>
-                      <strong>Демонстрационный режим.</strong> Покажем пример
-                      отчёта. Содержимое файла не анализируется.
+                      По нажатию «Проверить» файл отправится на сервер. «Пример
+                      отчёта» показывает отдельные демонстрационные данные.
                     </span>
                   </p>
                 </div>
@@ -646,7 +761,9 @@ function App() {
             <div className="workspace-footer">
               <span>
                 <ShieldCheck size={13} />
-                Файл остаётся на вашем устройстве
+                {isReport
+                  ? "Демонстрационный отчёт не анализирует ваш файл"
+                  : "Файл передаётся только после нажатия «Проверить»"}
               </span>
             </div>
           </section>

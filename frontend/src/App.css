@@ -646,6 +646,65 @@
   flex-shrink: 0;
   margin-top: 2px;
 }
+.submission-feedback:empty {
+  display: none;
+}
+.upload-progress {
+  margin-top: 17px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b6c8eb;
+}
+.upload-accepted {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 15px;
+  margin-top: 18px;
+  border: 1px solid #4d6c5b;
+  background: #25352c;
+  color: #d4e9dc;
+}
+.upload-accepted > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #a3c6b2;
+}
+.upload-accepted strong {
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.upload-accepted p {
+  margin-top: 7px;
+  color: #b8cdbe;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.accepted-id {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.upload-error strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+.upload-error p {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.upload-spinner {
+  animation: upload-spin 1s linear infinite;
+}
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .workspace-footer {
   min-height: 37px;
   padding: 10px 20px;
