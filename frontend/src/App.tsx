@@ -324,7 +324,7 @@ function App() {
                 <div className="upload-intro">
                   <span className="eyebrow">01 / Ваш документ</span>
                   <h2>
-                    Начнём
+                    Начнём{" "}
                     <br />с документа.
                   </h2>
                   <p>
