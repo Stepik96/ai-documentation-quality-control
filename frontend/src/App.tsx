@@ -28,15 +28,24 @@ import {
 } from "./demo";
 import type { DemoReport, Finding, Scenario } from "./demo";
 import { CheckSubmissionError, uploadDocument } from "./api/checks";
+import type { DocumentProfile } from "./api/checks";
+import { waitForResult } from "./api/results";
+import type { CheckResult } from "./api/results";
 import "./App.css";
 
 const EXAMPLE_FILE = "Пример проектной документации.docx";
 const UPLOAD_TIMEOUT_MS = 30_000;
 
+const CHECK_PROFILES: Record<DocumentProfile, { label: string; scope: string }> = {
+  "heading-demo": { label: "Демо: заголовок первого уровня", scope: "Структура и ссылки · наличие заголовка первого уровня" },
+  "tech-spec": { label: "Частное техническое задание", scope: "R02 · Оформление Word; R03 · Структура и ссылки" },
+  "user-guide": { label: "Руководство пользователя", scope: "R01 · Оформление Word (названия из словаря)" },
+};
+
 type Submission =
   | { state: "idle" }
   | { state: "submitting" }
-  | { state: "accepted"; checkId: string }
+  | { state: "accepted"; checkId: string; status: "queued" | "processing" }
   | { state: "error"; message: string };
 
 function DocumentArtwork({ selected = false }: { selected?: boolean }) {
@@ -91,6 +100,8 @@ function App() {
   const [screen, setScreen] = useState<"upload" | "report">("upload");
   const [scenario, setScenario] = useState<Scenario>("findings");
   const [report, setReport] = useState<DemoReport | null>(null);
+  const [checkResult, setCheckResult] = useState<(CheckResult & { fileName: string }) | null>(null);
+  const [profile, setProfile] = useState<DocumentProfile>("heading-demo");
   const [activeId, setActiveId] = useState("");
   const [copied, setCopied] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
@@ -157,15 +168,31 @@ function App() {
       timedOut = true;
       controller.abort();
     }, UPLOAD_TIMEOUT_MS);
+    let checkId: string | undefined;
     try {
-      const accepted = await uploadDocument(file, controller.signal);
-      if (uploadRef.current === controller)
-        setSubmission({ state: "accepted", checkId: accepted.checkId });
+      const accepted = await uploadDocument(file, controller.signal, fetch, profile);
+      if (uploadRef.current !== controller) return;
+      checkId = accepted.checkId;
+      setSubmission({ state: "accepted", checkId, status: "queued" });
+      const result = await waitForResult(checkId, controller.signal, (status) => {
+        if (uploadRef.current === controller)
+          setSubmission({ state: "accepted", checkId: accepted.checkId, status });
+      });
+      if (uploadRef.current !== controller) return;
+      setCheckResult({ ...result, fileName: file.name });
+      setScreen("report");
+      requestAnimationFrame(() => reportHeadingRef.current?.focus());
     } catch (error) {
       if (uploadRef.current !== controller) return;
       setSubmission({
         state: "error",
-        message: timedOut
+        message: checkId
+          ? timedOut
+            ? "Проверка не завершилась за время ожидания. Попробуйте ещё раз."
+            : error instanceof Error
+              ? error.message
+              : "Не удалось получить результат проверки."
+          : timedOut
           ? "Сервер не ответил вовремя. Приём документа не подтверждён. Попробуйте отправить файл ещё раз."
           : error instanceof CheckSubmissionError
             ? error.message
@@ -181,7 +208,9 @@ function App() {
     fileName = report?.fileName ?? EXAMPLE_FILE,
     focusHeading = true,
   ) {
+    if (uploadRef.current) return;
     const next = createDemoReport(nextScenario, fileName);
+    setCheckResult(null);
     setScenario(nextScenario);
     setReport(next);
     setActiveId(next.findings[0]?.id ?? "");
@@ -204,6 +233,7 @@ function App() {
     setSubmission({ state: "idle" });
     setScreen("upload");
     setReport(null);
+    setCheckResult(null);
     setFile(null);
     setSelectionError("");
     setScenario("findings");
@@ -242,7 +272,7 @@ function App() {
   const activeFinding = report?.findings.find(
     (finding) => finding.id === activeId,
   );
-  const isReport = screen === "report" && report !== null;
+  const isReport = screen === "report" && (report !== null || checkResult !== null);
   const isSubmitting = submission.state === "submitting";
   const isAccepted = submission.state === "accepted";
 
@@ -311,15 +341,48 @@ function App() {
               </span>
               <span>
                 {isReport
-                  ? "Отчёт / демонстрационные данные"
+                  ? checkResult ? "Отчёт по документу" : "Отчёт / демонстрационные данные"
                   : "Новая проверка"}
               </span>
               <span className="demo-label">
                 <span />
-                {isReport ? "Демо" : "Загрузка"}
+                {isReport ? (checkResult ? "Проверено" : "Демо") : "Загрузка"}
               </span>
             </div>
-            {!isReport ? (
+            {isReport && checkResult ? (
+              <div className="report-layout appear">
+                <div className="report-topline">
+                  <span className="eyebrow">Результат проверки</span>
+                  <button className="text-button" onClick={() => newCheck()}>
+                    <Plus size={15} />
+                    Новый документ
+                  </button>
+                </div>
+                <div className="report-header">
+                  <div>
+                    <h2 ref={reportHeadingRef} tabIndex={-1}>Отчёт по документу</h2>
+                    <p className="report-filename">{checkResult.fileName}</p>
+                  </div>
+                </div>
+                <p>{CHECK_PROFILES[checkResult.profile].scope} · замечаний: {checkResult.findings.length}</p>
+                {checkResult.unchecked.length > 0 && (
+                  <div className="partial-notice">
+                    <div>
+                      <strong>Частичный результат</strong>
+                      <ul>{checkResult.unchecked.map((item) => <li key={item}>{item}</li>)}</ul>
+                    </div>
+                  </div>
+                )}
+                {checkResult.findings.map((finding) => (
+                  <article className="finding-detail" key={finding.ruleId}>
+                    <h3>{finding.problem}</h3>
+                    <p>{finding.category} · {finding.ruleId} · {finding.location}</p>
+                    <p>{finding.rule}</p>
+                    <p>{finding.recommendation}</p>
+                  </article>
+                ))}
+              </div>
+            ) : !isReport ? (
               <div className="upload-layout appear">
                 <div className="upload-intro">
                   <span className="eyebrow">01 / Ваш документ</span>
@@ -357,7 +420,7 @@ function App() {
                   <input
                     ref={inputRef}
                     type="file"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isAccepted}
                     className="visually-hidden"
                     tabIndex={-1}
                     aria-label="Выбрать один документ"
@@ -370,7 +433,7 @@ function App() {
                     className={`dropzone ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
                     onDragOver={(event) => {
                       event.preventDefault();
-                      if (!isSubmitting) setDragging(true);
+                      if (!isSubmitting && !isAccepted) setDragging(true);
                     }}
                     onDragLeave={(event) => {
                       if (
@@ -413,7 +476,7 @@ function App() {
                           <button
                             className="text-button"
                             ref={chooseRef}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || isAccepted}
                             onClick={() => inputRef.current?.click()}
                           >
                             <RotateCcw size={13} />
@@ -421,7 +484,7 @@ function App() {
                           </button>
                           <button
                             className="text-button"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || isAccepted}
                             onClick={() => {
                               setFile(null);
                               setSelectionError("");
@@ -457,6 +520,18 @@ function App() {
                       {selectionError}
                     </div>
                   )}
+                  <label className="scenario-control">
+                    <span>Тип документа</span>
+                    <select
+                      value={profile}
+                      disabled={isSubmitting || isAccepted}
+                      onChange={(event) => setProfile(event.target.value as DocumentProfile)}
+                    >
+                      {Object.entries(CHECK_PROFILES).map(([value, item]) => (
+                        <option key={value} value={value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
                   <div className="upload-action-row">
                     <span className="file-count">
                       <span className={file ? "is-ready" : ""} />
@@ -471,7 +546,7 @@ function App() {
                     <button
                       className="button button-primary check-button"
                       disabled={!file || isSubmitting || isAccepted}
-                      aria-busy={isSubmitting}
+                      aria-busy={isSubmitting || isAccepted}
                       onClick={submitDocument}
                     >
                       {isSubmitting ? (
@@ -504,16 +579,16 @@ function App() {
                       <div className="upload-accepted" role="status">
                         <CheckCheck size={19} />
                         <div>
-                          <strong>Документ принят, ожидает проверки</strong>
+                          <strong>
+                            {submission.status === "queued"
+                              ? "Документ принят, ожидает проверки"
+                              : "Документ проверяется"}
+                          </strong>
                           <p>
                             Номер заявки:{" "}
                             <span className="accepted-id">
                               {submission.checkId}
                             </span>
-                          </p>
-                          <p>
-                            Статус и результат появятся на следующих этапах
-                            разработки.
                           </p>
                         </div>
                       </div>
@@ -523,7 +598,7 @@ function App() {
                     <div className="selection-error upload-error" role="alert">
                       <CircleAlert size={17} />
                       <div>
-                        <strong>Приём документа не подтверждён</strong>
+                        <strong>Не удалось завершить операцию</strong>
                         <p>{submission.message}</p>
                       </div>
                     </div>
@@ -537,7 +612,7 @@ function App() {
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : report ? (
               <div className="report-layout appear">
                 <div className="report-topline">
                   <span className="eyebrow">02 / Результат</span>
@@ -757,11 +832,13 @@ function App() {
                   </>
                 )}
               </div>
-            )}
+            ) : null}
             <div className="workspace-footer">
               <span>
                 <ShieldCheck size={13} />
-                {isReport
+                {checkResult
+                  ? `Версия правил: ${checkResult.rulesVersion}`
+                  : isReport
                   ? "Демонстрационный отчёт не анализирует ваш файл"
                   : "Файл передаётся только после нажатия «Проверить»"}
               </span>

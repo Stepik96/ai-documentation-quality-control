@@ -1,3 +1,5 @@
+export type DocumentProfile = "heading-demo" | "tech-spec" | "user-guide";
+
 export type AcceptedCheck = {
   checkId: string;
   status: "queued";
@@ -54,9 +56,11 @@ export async function uploadDocument(
   file: File,
   signal?: AbortSignal,
   request: typeof fetch = fetch,
+  profile: DocumentProfile = "heading-demo",
 ): Promise<AcceptedCheck> {
   const form = new FormData();
   form.append("file", file);
+  if (profile !== "heading-demo") form.append("profile", profile);
 
   let response: Response;
   try {
