@@ -1,15 +1,12 @@
 # ai-documentation-quality-control
 
-Сервис проверки проектной документации. На текущем этапе локальный API принимает один DOCX, сохраняет исходник и заявку в памяти и возвращает идентификатор со статусом `queued`. После перезапуска записи в памяти исчезают.
+Сервис проверки проектной документации. Локальный API принимает один DOCX, проверяет его в фоне и возвращает отчёт по идентификатору заявки. Исходник, статус и результат хранятся в памяти до перезапуска. Доступны тестовая проверка заголовка и [кандидаты R02, R03 и R01](docs/developers/docx-rule-profiles.md).
 
 ## Проверка на Windows
 
 Откройте PowerShell в корне репозитория. Для бэкенда нужен Python 3.11 или новее.
 
 ```powershell
-git fetch origin
-git switch feature/document-intake
-git pull --ff-only origin feature/document-intake
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
 .\.venv\Scripts\python.exe -m flask --app backend.http run --host 127.0.0.1 --port 8000
@@ -35,16 +32,18 @@ curl.exe -i -F "file=@$fixtures/example.txt" $api
 
 При отказе API возвращает `error.message` и не создаёт заявку. Автотесты запускаются отдельной командой из корня репозитория.
 
+После успешной отправки опрашивайте `GET /api/v1/checks/{checkId}`. При `completed` отчёт доступен через `GET /api/v1/checks/{checkId}/result`. Файл `scripts/fixtures/with-heading.docx` даёт ноль замечаний, а `scripts/fixtures/with-bold-text.docx` — одно замечание `DOCX-HEADING-01`.
+
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
 ```
 
 ### Проверка в браузере
 
-Понадобится Node.js 24 или новее. Оставьте бэкенд запущенным. Разверните ветку фронтенда в соседнем каталоге из корня бэкенда. Если такой checkout уже есть, перейдите сразу в его каталог `frontend`.
+Понадобится Node.js 24 или новее. Оставьте бэкенд запущенным. Для сквозной проверки используйте фронтенд из ветки `feature/frontend-check-results` в соседнем рабочем каталоге. После публикации ветки её можно развернуть командами ниже. Если она уже открыта в соседнем рабочем каталоге, перейдите сразу в его каталог `frontend`.
 
 ```powershell
-git worktree add --detach ../doccheck-frontend origin/frontend
+git worktree add --detach ../doccheck-frontend origin/feature/frontend-check-results
 Set-Location ../doccheck-frontend/frontend
 npm.cmd ci
 npm.cmd run dev
@@ -52,9 +51,9 @@ npm.cmd run dev
 
 Откройте адрес из вывода Vite, обычно `http://127.0.0.1:5173`. Vite проксирует `/api` на `http://127.0.0.1:8000`.
 
-1. Выберите `example.docx` из папки `$fixtures` и нажмите «Проверить». На экране появится подтверждение приёма. В **DevTools → Network** запрос `POST /api/v1/checks` вернёт `202`.
-2. Замените файл на `example.txt` и отправьте его. Интерфейс покажет «Выберите файл в формате DOCX», а запрос вернёт `415`.
-3. Снова выберите `example.docx`. Проверьте новый `202` и новый `checkId` в ответе.
+1. Отправьте `scripts/fixtures/with-heading.docx`. Откроется отчёт с нулём замечаний.
+2. Нажмите «Новый документ» и отправьте `scripts/fixtures/with-bold-text.docx`. В отчёте появится «Не найден заголовок первого уровня».
+3. Отправьте `example.txt` из папки `$fixtures`. Интерфейс покажет сообщение о неподдерживаемом формате, запрос вернёт `415`.
 
 Если порт 8000 недоступен, запустите Flask с `--port 8021` и используйте этот порт в `$api`. В терминале фронтенда перед `npm.cmd run dev` выполните `$env:API_PROXY_TARGET = 'http://127.0.0.1:8021'`.
 
